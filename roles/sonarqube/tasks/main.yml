@@ -1,0 +1,215 @@
+---
+  - name: Update apt-get repo and cache
+    apt: 
+      update_cache: yes 
+      force_apt_get: yes 
+      cache_valid_time: 3600
+      
+  - name: install JDK 11
+    apt:
+       name: "{{item}}"
+       state: present
+       update_cache: true 
+    with_items:
+    - openjdk-11-jdk
+    - python3    
+    - ansible
+    - php
+    - pip3
+    - unzip
+    - lxml
+    - acl
+
+  
+
+# Download the sonarqube packages from sonar community 
+  - name: download the sonarqube community
+    unarchive:
+      src: "{{ sonarquebe_url }}"
+      dest: "{{ sonarquebe_dir }}"
+      remote_src: yes
+  
+  - name: mv sonarqube folder
+    copy:
+       src: "{{ sonarquebe_dir }}"
+       dest: /opt/sonarqube/
+       remote_src: yes
+       directory_mode:
+    tags:
+      - dir_not_exist
+      - dircontent
+
+# copy sonarqube properties file which contains postgresql db details to remote server
+
+  - name: copy sonarqube properties file to remote system
+    copy:
+       src: sonar.properties
+       dest: "{{ sonarquebe_pro_location }}"
+       mode: 0755
+
+
+  - name: Add sonar user
+    user:
+     name: sonar
+     home: /opt/sonarqube 
+  
+  
+  - name: Change ownership for sonarquebe
+    file:
+      path:  "{{ dir_location }}"
+      owner: "{{ sonarquebe_user }}"
+      group: "{{ sonarquebe_group }}"
+      mode: 0755
+      recurse: yes
+      state: directory
+
+# copy sonarqube service 
+
+  - name: Copy service from local to remote
+    copy:
+       src: sonar.service
+       dest: /etc/systemd/system/
+       mode: 0755
+    notify:
+      - Start and enable sonar service
+
+
+  - name: Add the line of user
+    lineinfile:
+     path: /opt/sonarqube/sonarqube-9.1.0.47736/bin/linux-x86-64/sonar.sh 
+     regexp: '^#RUN_AS'
+     line: 'RUN_AS_USER=sonar'
+
+
+  - name: reboot the system
+    reboot:
+
+
+
+
+
+# Install posgtresql on remote server
+
+  - name:  install ansible postgresql dependancy packages
+    package:
+      pkg: python3-psycopg2
+      state: present
+  
+  - name: add the virtual max memory
+    lineinfile:
+      path: /etc/sysctl.conf
+      state: present
+      line: "{{ item }}"
+    with_items:
+    - 'vm.max_map_count=262144'
+    - 'fs.file-max=65536'
+    - 'ulimit -n 65536'
+    - 'ulimit -u 4096'
+
+  
+  - name: Ensure bash, OpenSSl, and libssl are the latest versions
+    apt:
+      name: "{{item}}"
+      update_cache: true 
+      state: latest
+    with_items: 
+      - bash
+      - openssl
+      - libssl-dev
+      - libssl-doc
+    
+
+
+  
+  - name: Install PostgreSQL
+    apt: 
+      name: "{{item}}"
+      state: present
+      update_cache: true 
+    with_items:
+        - postgresql
+        - postgresql-contrib
+        - libpq-dev
+    notify:
+      - Start PostgreSQL service
+
+  - name: Enable the database server to start automatically 
+    service:
+      name: postgresql
+      state: started
+      enabled: true
+
+
+
+  - name: Remove lines from pg_hba.conf
+    lineinfile:
+     dest: /etc/postgresql/14/main/pg_hba.conf
+     line: "{{ item }}"
+     state: absent
+    loop:
+       - "local   all             postgres                                peer"
+       - "local   all             all                                     peer"
+
+
+
+  - name: Add lines to /etc/postgresql/14/main/pg_hba.conf
+    lineinfile:
+      dest: /etc/postgresql/14/main/pg_hba.conf
+      line: "{{ item }}"
+    loop:
+        - "local   all             postgres                                trust"
+        - "local   all             all                                     md5"
+    notify: Restart PostgreSQL
+
+ 
+  
+  - name: Set password for user postgres
+    user:
+     name: postgres
+     password: "{{ db_password }}" 
+
+
+
+
+
+  - name: Create the database 
+    postgresql_db:
+      login_user: postgres
+      login_password: "{{ db_password }}"
+      name: sonarqube
+      template: 'template0'
+      state: present
+
+
+
+  - name: Create sonar user, and grant access
+    become: yes
+    become_user: postgres
+    postgresql_user:
+     db: sonarqube
+     name: sonar
+     password: my_strong_password
+     priv: ALL
+     expires: infinity
+
+      
+    
+
+  - name: Ensure user does not have unnecessary privileges
+    become: yes
+    become_user: postgres
+    postgresql_user: 
+      name: "{{ db_user }}"
+      role_attr_flags: NOSUPERUSER,NOCREATEDB
+      state: present
+  
+  
+
+  - name: Start SonarQube service
+    service:
+      name: sonarqube
+      state: started
+  
+
+
+# tasks file for sonarqube

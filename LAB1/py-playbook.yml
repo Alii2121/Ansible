@@ -1,0 +1,31 @@
+- name: Deploy Django app
+  hosts: ansible-1
+  become: yes
+  tasks:
+    - name: Install dependencies
+      apt: name={{ item }} state=present
+      with_items:
+         - python3
+         - python3-pip
+         - gunicorn3
+ 
+    - name: Copy Django app
+      copy:
+        src: ./simpleApp
+        dest: /home/ubuntu/django-app/simpleApp
+
+    - name: Install requirements
+      pip:
+          requirements: /home/ubuntu/django-app/simpleApp/simpleApp/requirements.txt
+
+    - name: Start Django application
+      command: gunicorn3 simpleApp.wsgi.application --bind 0.0.0.0:8000 --chdir /home/ubuntu/django-app/simpleApp
+       
+    - name: Install Requirments And Launch App
+      args:
+         chdir: /home/ubuntu/django-app/simpleApp
+      shell: |     
+              sudo python3 manage.py makemigrations
+              sudo python3 manage.py migrate
+              sudo python3 manage.py runserver 0.0.0.0:8000  
+

@@ -1,0 +1,12 @@
+---
+db_user: sonarqube
+db_name: sonarqube
+db_password: admin123
+sonarquebe_url: https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-9.1.0.47736.zip
+sonarquebe_dir: /home/ubuntu/
+sonarquebe_pro_location: /opt/sonarqube/sonarqube-9.1.0.47736/conf
+sonarquebe_user: ubuntu
+sonarquebe_group: ubuntu
+dir_location: /opt/sonarqube/sonarqube-9.1.0.47736
+
+# vars file for sonarqube
